@@ -1,0 +1,44 @@
+name: truthhire
+description: >
+  An AI environment that detects bias in job descriptions
+  and AI-generated content in news articles.
+version: 1.0.0
+author: your-huggingface-username
+tags:
+  - bias-detection
+  - ai-content
+  - job-descriptions
+  - news-articles
+  - real-world
+
+tasks:
+  - id: easy
+    description: Detect obvious bias in a job description
+    difficulty: easy
+
+  - id: medium
+    description: Detect AI-generated sentences in a news article
+    difficulty: medium
+
+  - id: hard
+    description: Detect both bias and AI-generated content together
+    difficulty: hard
+
+observation_space:
+  document: string
+  document_type: string
+  task_id: string
+  instructions: string
+
+action_space:
+  bias_phrases: list of strings
+  ai_sentences: list of strings
+  severity: "low | medium | high"
+  explanation: string
+
+reward:
+  min: 0.0
+  max: 1.0
+  type: continuous
+
+
