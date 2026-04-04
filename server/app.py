@@ -25,12 +25,15 @@ def root():
     return {"message": "TruthHire Environment is running!"}
 
 @app.post("/reset")
-def reset(request: ResetRequest):
-    obs = env.reset(task_id=request.task_id)
+def reset(request: Optional[ResetRequest] = None):
+    task_id = request.task_id if request else "easy"
+    obs = env.reset(task_id=task_id)
     return obs
 
 @app.post("/step")
-def step(request: StepRequest):
+def step(request: Optional[StepRequest] = None):
+    if request is None:
+        request = StepRequest()
     action = Action(
         bias_phrases=request.bias_phrases,
         ai_sentences=request.ai_sentences,

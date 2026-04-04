@@ -1,12 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional
-from environment import TruthHireEnv, Observation, Action, Reward
+from environment import TruthHireEnv, Action
 
 app = FastAPI()
 env = TruthHireEnv()
-
-# ─── Request Models ────────────────────────────────────────
 
 class ResetRequest(BaseModel):
     task_id: Optional[str] = "easy"
@@ -17,19 +15,20 @@ class StepRequest(BaseModel):
     severity: str = "low"
     explanation: str = ""
 
-# ─── Routes ────────────────────────────────────────────────
-
 @app.get("/")
 def root():
     return {"message": "TruthHire Environment is running!"}
 
 @app.post("/reset")
-def reset(request: ResetRequest):
-    obs = env.reset(task_id=request.task_id)
+def reset(request: Optional[ResetRequest] = None):
+    task_id = request.task_id if request else "easy"
+    obs = env.reset(task_id=task_id)
     return obs
 
 @app.post("/step")
-def step(request: StepRequest):
+def step(request: Optional[StepRequest] = None):
+    if request is None:
+        request = StepRequest()
     action = Action(
         bias_phrases=request.bias_phrases,
         ai_sentences=request.ai_sentences,
@@ -57,7 +56,3 @@ def tasks():
             {"id": "hard", "description": "Detect both bias and AI content together"}
         ]
     }
-
-
-
-
