@@ -1,73 +1,84 @@
 import os
 import json
+import requests
 from openai import OpenAI
 
-# ─── Setup ─────────────────────────────────────────────────
+# ─── Environment Variables (EXACT format required) ──────────
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.3")
+HF_TOKEN = os.getenv("HF_TOKEN")  # NO default!
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+ENV_URL = os.getenv("ENV_URL", "https://merlin018-truthhire.hf.space")
 
+# ─── OpenAI Client (required) ───────────────────────────────
 client = OpenAI(
-    api_key=os.environ.get("HF_TOKEN"),
-    base_url=os.environ.get("API_BASE_URL")
+    api_key=HF_TOKEN,
+    base_url=API_BASE_URL
 )
-MODEL = os.environ.get("MODEL_NAME")
-ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
 
-import requests
-
+# ─── Environment API calls ──────────────────────────────────
 def reset(task_id="easy"):
-    res = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id})
+    res = requests.post(
+        f"{ENV_URL}/reset",
+        json={"task_id": task_id}
+    )
     return res.json()
 
 def step(action: dict):
-    res = requests.post(f"{ENV_URL}/step", json=action)
+    res = requests.post(
+        f"{ENV_URL}/step",
+        json=action
+    )
     return res.json()
 
-def get_state():
-    res = requests.get(f"{ENV_URL}/state")
-    return res.json()
-
-# ─── AI Agent ──────────────────────────────────────────────
-
+# ─── Run Single Task ────────────────────────────────────────
 def run_task(task_id: str):
-    print("[START]")
-    print(f"task_id={task_id}")
-
     obs = reset(task_id)
     done = False
-    step_count = 0
+    step_num = 0
     final_score = 0.0
 
+    # ─── EXACT log format required ──────────────────────────
+    print(json.dumps({
+        "event": "START",
+        "task_id": task_id,
+        "document_type": obs.get("document_type"),
+        "instructions": obs.get("instructions")
+    }))
+
     while not done:
-        # Ask AI to analyze the document
+        # Ask AI to analyze document
         response = client.chat.completions.create(
-            model=MODEL,
+            model=MODEL_NAME,
             messages=[
                 {
                     "role": "system",
                     "content": """You are an expert at detecting:
-                    1. Biased language in job descriptions
-                    2. AI-generated content in news articles
-                    
-                    Always respond in this exact JSON format:
-                    {
-                        "bias_phrases": ["phrase1", "phrase2"],
-                        "ai_sentences": ["sentence1", "sentence2"],
-                        "severity": "low or medium or high",
-                        "explanation": "your explanation here"
-                    }"""
+1. Biased language in job descriptions and medical research
+2. AI-generated content in news articles
+
+Always respond in this exact JSON format only, no other text:
+{
+    "bias_phrases": ["phrase1", "phrase2"],
+    "ai_sentences": ["sentence1", "sentence2"],
+    "severity": "low or medium or high",
+    "explanation": "your explanation here"
+}"""
                 },
                 {
                     "role": "user",
                     "content": f"""
-                    Document Type: {obs.get('document_type')}
-                    Instructions: {obs.get('instructions')}
-                    
-                    Document:
-                    {obs.get('document')}
-                    
-                    Analyze and respond in JSON format only.
-                    """
+Document Type: {obs.get('document_type')}
+Instructions: {obs.get('instructions')}
+
+Document:
+{obs.get('document')}
+
+Respond in JSON format only.
+"""
                 }
-            ]
+            ],
+            max_tokens=500
         )
 
         # Parse AI response
@@ -75,7 +86,7 @@ def run_task(task_id: str):
             raw = response.choices[0].message.content
             clean = raw.replace("```json", "").replace("```", "").strip()
             action = json.loads(clean)
-        except Exception as e:
+        except Exception:
             action = {
                 "bias_phrases": [],
                 "ai_sentences": [],
@@ -83,27 +94,39 @@ def run_task(task_id: str):
                 "explanation": "Could not parse response"
             }
 
-        print(f"[STEP] step={step_count} action={json.dumps(action)}")
+        # ─── EXACT STEP log format ───────────────────────────
+        print(json.dumps({
+            "event": "STEP",
+            "step": step_num,
+            "action": action
+        }))
 
         # Send action to environment
         result = step(action)
         obs = result.get("observation", obs)
         done = result.get("done", True)
         final_score = result.get("reward", {}).get("score", 0.0)
-        step_count += 1
+        step_num += 1
 
-    print(f"[END] task_id={task_id} score={final_score}")
+    # ─── EXACT END log format ────────────────────────────────
+    print(json.dumps({
+        "event": "END",
+        "task_id": task_id,
+        "score": final_score
+    }))
+
     return final_score
 
-# ─── Run All Tasks ─────────────────────────────────────────
-
+# ─── Run All Tasks ───────────────────────────────────────────
 if __name__ == "__main__":
-    scores = {}
-    for task in ["easy", "medium", "hard"]:
-        score = run_task(task)
-        scores[task] = score
+    all_scores = {}
 
-    print("\n── Final Scores ──")
-    for task, score in scores.items():
-        print(f"{task}: {score}")
-    print(f"Average: {sum(scores.values()) / len(scores):.2f}")
+    for task in ["easy", "medium", "hard", "expert"]:
+        score = run_task(task)
+        all_scores[task] = score
+
+    print(json.dumps({
+        "event": "SUMMARY",
+        "scores": all_scores,
+        "average": round(sum(all_scores.values()) / len(all_scores), 2)
+    }))
