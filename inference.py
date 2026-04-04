@@ -54,7 +54,7 @@ def run_task(task_id: str):
                 {
                     "role": "system",
                     "content": """You are an expert at detecting:
-1. Biased language in job descriptions and medical research
+1. Biased language in job descriptions
 2. AI-generated content in news articles
 
 Always respond in this exact JSON format only, no other text:
@@ -121,7 +121,7 @@ Respond in JSON format only.
 if __name__ == "__main__":
     all_scores = {}
 
-    for task in ["easy", "medium", "hard", "expert"]:
+    for task in ["easy", "medium", "hard"]:
         score = run_task(task)
         all_scores[task] = score
 
