@@ -4,32 +4,32 @@ from pydantic import BaseModel
 from typing import Optional
 import sys
 import os
-
+ 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from environment import TruthHireEnv, Action
-
+ 
 app = FastAPI()
 env = TruthHireEnv()
-
+ 
 class ResetRequest(BaseModel):
     task_id: Optional[str] = "easy"
-
+ 
 class StepRequest(BaseModel):
     bias_phrases: list[str] = []
     ai_sentences: list[str] = []
     severity: str = "low"
     explanation: str = ""
-
+ 
 @app.get("/")
 def root():
     return {"message": "TruthHire Environment is running!"}
-
+ 
 @app.post("/reset")
 def reset(request: Optional[ResetRequest] = None):
     task_id = request.task_id if request else "easy"
     obs = env.reset(task_id=task_id)
     return obs
-
+ 
 @app.post("/step")
 def step(request: Optional[StepRequest] = None):
     if request is None:
@@ -47,11 +47,11 @@ def step(request: Optional[StepRequest] = None):
         "done": done,
         "info": info
     }
-
+ 
 @app.get("/state")
 def state():
     return env.state()
-
+ 
 @app.get("/tasks")
 def tasks():
     return {
@@ -61,10 +61,9 @@ def tasks():
             {"id": "hard", "description": "Detect both bias and AI content together"}
         ]
     }
-
+ 
 def main():
-    if __name__ == "__main__":
-        uvicorn.run(app, host="0.0.0.0", port=7860)
-
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+ 
 if __name__ == "__main__":
     main()
