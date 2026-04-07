@@ -18,18 +18,38 @@ client = OpenAI(
 
 # ─── Environment API calls ──────────────────────────────────
 def reset(task_id="easy"):
-    res = requests.post(
-        f"{ENV_URL}/reset",
-        json={"task_id": task_id}
-    )
-    return res.json()
+    try:
+        res = requests.post(
+            f"{ENV_URL}/reset",
+            json={"task_id": task_id},
+            timeout=30
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(json.dumps({"event": "ERROR", "stage": "reset", "error": str(e)}))
+        return {}
 
 def step(action: dict):
-    res = requests.post(
-        f"{ENV_URL}/step",
-        json=action
-    )
-    return res.json()
+    try:
+        res = requests.post(
+            f"{ENV_URL}/step",
+            json=action,
+            timeout=30
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(json.dumps({"event": "ERROR", "stage": "step", "error": str(e)}))
+        return {"observation": {}, "reward": 0.0, "done": True, "info": {}}
+
+# ─── Extract score safely ────────────────────────────────────
+def extract_score(reward):
+    if isinstance(reward, dict):
+        return reward.get("score", 0.0)
+    elif isinstance(reward, (int, float)):
+        return float(reward)
+    return 0.0
 
 # ─── Run Single Task ────────────────────────────────────────
 def run_task(task_id: str):
@@ -48,12 +68,13 @@ def run_task(task_id: str):
 
     while not done:
         # Ask AI to analyze document
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are an expert at detecting:
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are an expert at detecting:
 1. Biased language in job descriptions
 2. AI-generated content in news articles
 
@@ -64,34 +85,42 @@ Always respond in this exact JSON format only, no other text:
     "severity": "low or medium or high",
     "explanation": "your explanation here"
 }"""
-                },
-                {
-                    "role": "user",
-                    "content": f"""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
 Document Type: {obs.get('document_type')}
 Instructions: {obs.get('instructions')}
 
 Document:
 {obs.get('document')}
 
-Respond in JSON format only.
+Analyze the document carefully and respond in JSON format only.
+Identify ALL biased phrases and AI-generated sentences you find.
+Be thorough - missing items reduces your score.
 """
-                }
-            ],
-            max_tokens=500
-        )
-
-        # Parse AI response
-        try:
+                    }
+                ],
+                max_tokens=500
+            )
             raw = response.choices[0].message.content
             clean = raw.replace("```json", "").replace("```", "").strip()
             action = json.loads(clean)
-        except Exception:
+
+        except json.JSONDecodeError:
+            # Try to extract partial JSON
             action = {
                 "bias_phrases": [],
                 "ai_sentences": [],
                 "severity": "low",
                 "explanation": "Could not parse response"
+            }
+        except Exception as e:
+            action = {
+                "bias_phrases": [],
+                "ai_sentences": [],
+                "severity": "low",
+                "explanation": f"Error: {str(e)}"
             }
 
         # ─── EXACT STEP log format ───────────────────────────
@@ -105,7 +134,7 @@ Respond in JSON format only.
         result = step(action)
         obs = result.get("observation", obs)
         done = result.get("done", True)
-        final_score = result.get("reward", {}).get("score", 0.0)
+        final_score = extract_score(result.get("reward", 0.0))
         step_num += 1
 
     # ─── EXACT END log format ────────────────────────────────
