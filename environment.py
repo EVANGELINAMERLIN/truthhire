@@ -6,15 +6,15 @@ import random
 
 class Observation(BaseModel):
     document: str
-    document_type: str        # "job_post" or "news_article"
+    document_type: str
     task_id: str
     instructions: str
 
 class Action(BaseModel):
-    bias_phrases: list[str]           # list of biased phrases found
-    ai_sentences: list[str]           # list of AI-generated sentences found
-    severity: str                     # "low", "medium", "high"
-    explanation: str                  # why you flagged these
+    bias_phrases: list[str] = []
+    ai_sentences: list[str] = []
+    severity: str = "low"
+    explanation: str = ""
 
 class Reward(BaseModel):
     score: float
@@ -109,14 +109,17 @@ class TruthHireEnv:
 
     def __init__(self):
         self.current_task = None
+        self.current_task_id = None
         self.step_count = 0
         self.max_steps = 5
         self.last_reward = None
 
     def reset(self, task_id: str = "easy") -> Observation:
         self.current_task = DOCUMENTS[task_id]
+        self.current_task_id = task_id
         self.step_count = 0
         self.last_reward = None
+
         return Observation(
             document=self.current_task["text"],
             document_type=self.current_task["type"],
@@ -129,16 +132,26 @@ class TruthHireEnv:
         )
 
     def step(self, action: Action):
+        # ✅ Safety check
+        if self.current_task is None:
+            return None, Reward(score=0, feedback="Call /reset first"), True, {}
+
         self.step_count += 1
-        grader = GRADERS[self.current_task["id"].split("_")[0]]
+
+        # ✅ Correct grader selection
+        grader = GRADERS[self.current_task_id]
+
         score, feedback = grader(action, self.current_task)
+
         self.last_reward = Reward(score=score, feedback=feedback)
+
         done = self.step_count >= self.max_steps or score >= 0.8
+
         return (
             Observation(
                 document=self.current_task["text"],
                 document_type=self.current_task["type"],
-                task_id=self.current_task["id"],
+                task_id=self.current_task_id,
                 instructions="Refine your analysis if needed."
             ),
             self.last_reward,
@@ -148,7 +161,7 @@ class TruthHireEnv:
 
     def state(self) -> dict:
         return {
-            "current_task": self.current_task["id"] if self.current_task else None,
+            "current_task": self.current_task_id,
             "step_count": self.step_count,
             "last_score": self.last_reward.score if self.last_reward else None
         }
