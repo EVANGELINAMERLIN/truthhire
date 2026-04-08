@@ -4,7 +4,7 @@ import requests
 from openai import OpenAI
 
 # ─── Environment Variables (EXACT format required) ──────────
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")  # FIXED URL
 MODEL_NAME = os.getenv("MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.3")
 HF_TOKEN = os.getenv("HF_TOKEN")  # NO default!
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
@@ -27,7 +27,7 @@ def reset(task_id="easy"):
         res.raise_for_status()
         return res.json()
     except Exception as e:
-        print(json.dumps({"event": "ERROR", "stage": "reset", "error": str(e)}))
+        print(json.dumps({"event": "ERROR", "stage": "reset", "error": str(e)}), flush=True)
         return {}
 
 def step(action: dict):
@@ -40,7 +40,7 @@ def step(action: dict):
         res.raise_for_status()
         return res.json()
     except Exception as e:
-        print(json.dumps({"event": "ERROR", "stage": "step", "error": str(e)}))
+        print(json.dumps({"event": "ERROR", "stage": "step", "error": str(e)}), flush=True)
         return {"observation": {}, "reward": 0.0, "done": True, "info": {}}
 
 # ─── Extract score safely ────────────────────────────────────
@@ -58,13 +58,8 @@ def run_task(task_id: str):
     step_num = 0
     final_score = 0.0
 
-    # ─── EXACT log format required ──────────────────────────
-    print(json.dumps({
-        "event": "START",
-        "task_id": task_id,
-        "document_type": obs.get("document_type"),
-        "instructions": obs.get("instructions")
-    }))
+    # ─── Required [START] block ──────────────────────────────
+    print(f"[START] task={task_id}", flush=True)
 
     while not done:
         # Ask AI to analyze document
@@ -108,7 +103,6 @@ Be thorough - missing items reduces your score.
             action = json.loads(clean)
 
         except json.JSONDecodeError:
-            # Try to extract partial JSON
             action = {
                 "bias_phrases": [],
                 "ai_sentences": [],
@@ -123,26 +117,19 @@ Be thorough - missing items reduces your score.
                 "explanation": f"Error: {str(e)}"
             }
 
-        # ─── EXACT STEP log format ───────────────────────────
-        print(json.dumps({
-            "event": "STEP",
-            "step": step_num,
-            "action": action
-        }))
-
         # Send action to environment
         result = step(action)
         obs = result.get("observation", obs)
         done = result.get("done", True)
-        final_score = extract_score(result.get("reward", 0.0))
+        reward = extract_score(result.get("reward", 0.0))
+        final_score = reward
         step_num += 1
 
-    # ─── EXACT END log format ────────────────────────────────
-    print(json.dumps({
-        "event": "END",
-        "task_id": task_id,
-        "score": final_score
-    }))
+        # ─── Required [STEP] block ───────────────────────────
+        print(f"[STEP] step={step_num} reward={reward}", flush=True)
+
+    # ─── Required [END] block ────────────────────────────────
+    print(f"[END] task={task_id} score={final_score} steps={step_num}", flush=True)
 
     return final_score
 
@@ -158,4 +145,4 @@ if __name__ == "__main__":
         "event": "SUMMARY",
         "scores": all_scores,
         "average": round(sum(all_scores.values()) / len(all_scores), 2)
-    }))
+    }), flush=True)
