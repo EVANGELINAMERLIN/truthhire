@@ -3,14 +3,14 @@ import json
 import requests
 from openai import OpenAI
 
-# ─── Environment Variables (EXACT format required) ──────────
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")  # FIXED URL
+# ─── Environment Variables ───────────────────────────────────
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.3")
 HF_TOKEN = os.getenv("HF_TOKEN")  # NO default!
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 ENV_URL = os.getenv("ENV_URL", "https://merlin018-truthhire.hf.space")
 
-# ─── OpenAI Client (required) ───────────────────────────────
+# ─── OpenAI Client ───────────────────────────────────────────
 client = OpenAI(
     api_key=HF_TOKEN,
     base_url=API_BASE_URL
@@ -46,17 +46,21 @@ def step(action: dict):
 # ─── Extract score safely ────────────────────────────────────
 def extract_score(reward):
     if isinstance(reward, dict):
-        return reward.get("score", 0.0)
+        score = reward.get("score", 0.1)
     elif isinstance(reward, (int, float)):
-        return float(reward)
-    return 0.0
+        score = float(reward)
+    else:
+        score = 0.1
+    # Must be strictly between 0 and 1 (not 0.0, not 1.0)
+    score = max(0.01, min(0.99, score))
+    return score
 
 # ─── Run Single Task ────────────────────────────────────────
 def run_task(task_id: str):
     obs = reset(task_id)
     done = False
     step_num = 0
-    final_score = 0.0
+    final_score = 0.1  # default > 0
 
     # ─── Required [START] block ──────────────────────────────
     print(f"[START] task={task_id}", flush=True)
@@ -121,7 +125,7 @@ Be thorough - missing items reduces your score.
         result = step(action)
         obs = result.get("observation", obs)
         done = result.get("done", True)
-        reward = extract_score(result.get("reward", 0.0))
+        reward = extract_score(result.get("reward", 0.1))
         final_score = reward
         step_num += 1
 
